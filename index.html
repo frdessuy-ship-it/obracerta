@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ObraCerta</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <p id="brandEyebrow" class="eyebrow">Controle de custos</p>
+        <h1 id="brandTitle">ObraCerta</h1>
+        <button type="button" id="sidebarDescriptionButton" class="sidebar-description-button" aria-label="Editar descricao lateral">
+          <p id="brandDescription" class="sidebar-copy">
+            Acompanhe custos, fornecedores, categorias e resultado financeiro da obra em um so lugar.
+          </p>
+        </button>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button type="button" class="nav-link is-active" data-view="dashboard">Dashboard</button>
+        <button type="button" class="nav-link" data-view="lancamentos">Lancamentos</button>
+        <button type="button" class="nav-link" data-view="relatorios">Relatorios</button>
+        <button type="button" class="nav-link" data-view="cadastros">Cadastros</button>
+        <button type="button" class="nav-link" data-view="graficos">Graficos</button>
+      </nav>
+
+      <p class="sidebar-signature">&copy; 2026 Francisco Dessuy</p>
+    </aside>
+
+    <div id="brandEditorOverlay" class="overlay" hidden>
+      <section class="overlay-card">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Identidade lateral</p>
+            <h3>Editar descricao do sistema</h3>
+          </div>
+        </div>
+
+        <form id="brandForm" class="full-cadastro-form">
+          <label>
+            Titulo pequeno
+            <input type="text" id="brandEyebrowInput" required>
+          </label>
+          <label>
+            Nome principal
+            <input type="text" id="brandTitleInput" required>
+          </label>
+          <label class="full-width">
+            Descricao
+            <textarea id="brandDescriptionInput" rows="4" required></textarea>
+          </label>
+          <div class="form-actions full-width">
+            <button type="submit" class="primary-button">Salvar texto</button>
+            <button type="button" id="cancelBrandEditButton" class="secondary-button">Cancelar</button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <main class="content">
+      <section class="view is-active dashboard-view" data-view-panel="dashboard">
+        <section class="panel dashboard-metrics-panel">
+          <div class="stats-grid dashboard-top-grid" aria-label="Compilado financeiro">
+            <article class="stat-card">
+              <span>Total de despesas</span>
+              <strong id="totalSpent">R$ 0,00</strong>
+            </article>
+            <article class="stat-card">
+              <span>Total custo obra</span>
+              <strong id="totalProjectCost">R$ 0,00</strong>
+            </article>
+            <article class="stat-card">
+              <span>Lucro</span>
+              <strong id="profitValue">R$ 0,00</strong>
+            </article>
+            <article class="stat-card mini-stat-card">
+              <span>% de lucro</span>
+              <strong id="profitMargin">0,00%</strong>
+            </article>
+            <article class="stat-card mini-stat-card">
+              <span>R$/m2</span>
+              <strong id="costPerSquareMeter">R$ 0,00</strong>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel financial-summary-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Resumo financeiro</p>
+              <h3>Dados base da obra</h3>
+            </div>
+          </div>
+
+          <div class="financial-summary-grid">
+            <button type="button" id="saleTargetCardButton" class="summary-inline-card summary-edit-card">
+              <span>Valor de venda</span>
+              <strong id="saleTargetCard">R$ 0,00</strong>
+            </button>
+            <button type="button" id="landValueCard" class="summary-inline-card summary-edit-card">
+              <span>Valor do terreno</span>
+              <strong id="landValue">R$ 0,00</strong>
+            </button>
+            <button type="button" id="projectAreaCard" class="summary-inline-card summary-edit-card">
+              <span>Metragem construida</span>
+              <strong id="projectAreaValue">0 m²</strong>
+            </button>
+          </div>
+        </section>
+
+      </section>
+
+      <section class="view" data-view-panel="lancamentos">
+        <section class="panel form-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Novo lancamento</p>
+              <h3>Registrar despesa da obra</h3>
+            </div>
+            <span id="formModeBadge" class="mode-badge">Modo criacao</span>
+          </div>
+
+          <div class="import-box">
+            <div>
+              <p class="eyebrow">Importacao</p>
+              <h3>Importar XML da nota fiscal</h3>
+              <small>Preenche fornecedor, NF, data e cria os itens da nota individualmente.</small>
+            </div>
+            <div class="import-actions">
+              <input type="file" id="invoiceXmlInput" accept=".xml" hidden>
+              <button type="button" id="importXmlButton" class="secondary-button">Selecionar XML</button>
+            </div>
+          </div>
+
+            <form id="expenseForm" class="expense-form">
+              <label>
+                Data
+                <input type="date" id="expenseDate" required>
+              </label>
+              <label>
+                NF
+                <input type="text" id="expenseInvoice" placeholder="Opcional">
+              </label>
+              <label>
+                Fornecedor
+                <select id="expenseSupplier" required></select>
+              </label>
+              <label class="full-width">
+                Observacoes
+                <textarea id="expenseNotes" rows="3" placeholder="Informacoes adicionais do gasto"></textarea>
+              </label>
+              <div class="full-width items-box">
+                <div class="panel-header items-header">
+                  <div>
+                    <p class="eyebrow">Itens da nota</p>
+                    <h3>Adicionar itens individualmente</h3>
+                  </div>
+                  <button type="button" id="addExpenseItemButton" class="secondary-button">Adicionar item</button>
+                </div>
+                <div class="items-table-wrapper">
+                    <table class="items-table">
+                      <thead>
+                        <tr>
+                          <th>Categoria</th>
+                          <th>Descricao</th>
+                          <th>Qnt</th>
+                          <th>Valor unitario</th>
+                          <th>Desconto</th>
+                        <th>Valor pago</th>
+                        <th>Acoes</th>
+                      </tr>
+                    </thead>
+                    <tbody id="expenseItemsBody"></tbody>
+                    <tfoot>
+                      <tr>
+                        <td colspan="4">Total da nota</td>
+                        <td id="expenseItemsTotal">R$ 0,00</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+              <div class="form-actions full-width">
+              <button type="submit" id="submitButton" class="primary-button">Salvar lancamento</button>
+              <button type="button" id="cancelEditButton" class="secondary-button" hidden>Cancelar edicao</button>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section class="view" data-view-panel="relatorios">
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Consulta rapida</p>
+              <h3>Historico de despesas</h3>
+            </div>
+            <span id="reportSummary" class="mode-badge">0 lancamentos</span>
+          </div>
+
+          <div class="filters">
+            <label>
+              Data inicial
+              <input type="date" id="filterDateFrom">
+            </label>
+            <label>
+              Data final
+              <input type="date" id="filterDateTo">
+            </label>
+            <label>
+              Categoria
+              <select id="filterCategory"></select>
+            </label>
+            <label>
+              Fornecedor
+              <select id="filterSupplier"></select>
+            </label>
+            <label>
+              Buscar
+              <input type="search" id="filterSearch" placeholder="Descricao, fornecedor ou tipo">
+            </label>
+            <div class="form-actions">
+              <button type="button" id="clearFiltersButton" class="secondary-button">Limpar filtros</button>
+            </div>
+          </div>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Categoria</th>
+                  <th>Qnt</th>
+                  <th>Fornecedor</th>
+                  <th>Descricao</th>
+                  <th>NF</th>
+                  <th>Valor pago</th>
+                  <th>Acoes</th>
+                </tr>
+              </thead>
+              <tbody id="expensesTableBody"></tbody>
+            </table>
+          </div>
+
+          <div class="report-footer">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Compilado por fornecedor</p>
+                <h3>Clique no fornecedor para ver os lancamentos</h3>
+              </div>
+            </div>
+            <div id="reportSuppliersList" class="supplier-summary-grid"></div>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" data-view-panel="cadastros">
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Cadastros</p>
+                <h3>Cadastro completo de fornecedores e clientes</h3>
+              </div>
+              <span id="supplierFormModeBadge" class="mode-badge">Modo criacao</span>
+            </div>
+
+            <form id="supplierForm" class="supplier-form full-cadastro-form">
+              <label>
+                Nome
+                <input type="text" id="supplierName" placeholder="Nome do fornecedor" required>
+              </label>
+              <label>
+                Nome fantasia
+                <input type="text" id="supplierTradeName" placeholder="Opcional">
+              </label>
+              <label>
+                CNPJ
+                <div class="inline-field-action">
+                  <input type="text" id="supplierCnpj" placeholder="Opcional">
+                  <button type="button" id="lookupCnpjButton" class="secondary-button inline-action-button">Buscar por CNPJ</button>
+                </div>
+              </label>
+              <label>
+                IE
+                <input type="text" id="supplierStateRegistration" placeholder="Opcional">
+              </label>
+              <label>
+                Email
+                <input type="email" id="supplierEmail" placeholder="Opcional">
+              </label>
+              <label>
+                Telefone
+                <input type="text" id="supplierPhone" placeholder="Opcional">
+              </label>
+              <label>
+                Celular
+                <input type="text" id="supplierMobile" placeholder="Opcional">
+              </label>
+              <label>
+                CEP
+                <input type="text" id="supplierZipCode" placeholder="Opcional">
+              </label>
+              <label>
+                Endereco
+                <input type="text" id="supplierAddress" placeholder="Rua, avenida, etc.">
+              </label>
+              <label>
+                Numero
+                <input type="text" id="supplierNumber" placeholder="Opcional">
+              </label>
+              <label>
+                Complemento
+                <input type="text" id="supplierComplement" placeholder="Opcional">
+              </label>
+              <label>
+                Bairro
+                <input type="text" id="supplierDistrict" placeholder="Opcional">
+              </label>
+              <label>
+                Cidade
+                <input type="text" id="supplierCity" placeholder="Opcional">
+              </label>
+              <label>
+                Estado
+                <input type="text" id="supplierState" placeholder="UF">
+              </label>
+              <label class="full-width">
+                Observacoes
+                <textarea id="supplierNotes" rows="3" placeholder="Informacoes adicionais"></textarea>
+              </label>
+              <div class="form-actions full-width">
+                <button type="submit" id="supplierSubmitButton" class="primary-button">Cadastrar fornecedor</button>
+                <button type="button" id="cancelSupplierEditButton" class="secondary-button" hidden>Cancelar edicao</button>
+              </div>
+              <small class="full-width form-helper">Informe o CNPJ e use a busca automatica para preencher os dados principais do cadastro.</small>
+            </form>
+
+        </section>
+      </section>
+
+      <section class="view" data-view-panel="graficos">
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Graficos</p>
+              <h3 id="graphMainTitle">Gastos por categoria</h3>
+            </div>
+            <button type="button" id="graphBackButton" class="secondary-button" hidden>Voltar</button>
+          </div>
+          <div id="graphSummary" class="stack-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Detalhamento</p>
+              <h3 id="graphDetailTitle">Clique em um item do grafico</h3>
+            </div>
+            <span id="graphDetailSummary" class="mode-badge">Sem selecao</span>
+          </div>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Categoria</th>
+                  <th>Fornecedor</th>
+                  <th>Descricao</th>
+                  <th>NF</th>
+                  <th>Valor pago</th>
+                </tr>
+              </thead>
+              <tbody id="graphDetailBody">
+                <tr>
+                  <td colspan="6">
+                    <div class="empty-state">Selecione uma categoria, fornecedor ou material para ver os lancamentos.</div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
