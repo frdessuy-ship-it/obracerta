@@ -188,6 +188,13 @@ const initialExpenses = [
   },
 ];
 
+const SUPABASE_TABLE = "app_state";
+const defaultCloudConfig = {
+  url: "",
+  anonKey: "",
+  stateId: "main",
+};
+
 const state = {
   expenses: loadExpenses().map(normalizeExpense),
   editingExpenseId: null,
@@ -201,6 +208,7 @@ const state = {
     category: null,
     supplier: null,
   },
+  cloud: createCloudState(),
 };
 
 const elements = {
@@ -282,13 +290,14 @@ const elements = {
 
 bootstrap();
 
-function bootstrap() {
+async function bootstrap() {
   fillBrandForm();
   fillCategorySelects();
   ensureSuppliersFromExpenses();
   bindEvents();
   setExpenseItems([createEmptyExpenseItem()]);
   render();
+  await initializeCloudSync();
 }
 
 function bindEvents() {
@@ -329,6 +338,176 @@ function bindEvents() {
   elements.navLinks.forEach((button) => {
     button.addEventListener("click", () => setView(button.dataset.view));
   });
+}
+
+function createCloudState() {
+  const config = {
+    ...defaultCloudConfig,
+    ...(window.OBRA_CERTA_SUPABASE || {}),
+  };
+
+  return {
+    config,
+    client: null,
+    channel: null,
+    enabled: false,
+    applyingRemote: false,
+    syncTimer: null,
+    lastSignature: "",
+  };
+}
+
+function isCloudConfigured() {
+  const { url, anonKey } = state.cloud.config;
+  return Boolean(url && anonKey && window.supabase?.createClient);
+}
+
+async function initializeCloudSync() {
+  if (!isCloudConfigured()) {
+    return;
+  }
+
+  try {
+    state.cloud.client = window.supabase.createClient(
+      state.cloud.config.url,
+      state.cloud.config.anonKey,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    );
+
+    state.cloud.enabled = true;
+
+    const { data, error } = await state.cloud.client
+      .from(SUPABASE_TABLE)
+      .select("id, payload")
+      .eq("id", state.cloud.config.stateId)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (data?.payload) {
+      applyCloudSnapshot(data.payload);
+      persistAllLocal();
+      render();
+    } else {
+      await saveCloudStateNow();
+    }
+
+    subscribeToCloudChanges();
+  } catch (error) {
+    console.error("Falha ao iniciar sincronizacao com Supabase.", error);
+    state.cloud.enabled = false;
+    state.cloud.client = null;
+  }
+}
+
+function subscribeToCloudChanges() {
+  if (!state.cloud.client) {
+    return;
+  }
+
+  state.cloud.channel?.unsubscribe();
+
+  state.cloud.channel = state.cloud.client
+    .channel(`obra-certa-${state.cloud.config.stateId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: SUPABASE_TABLE,
+        filter: `id=eq.${state.cloud.config.stateId}`,
+      },
+      (payload) => {
+        const nextPayload = payload.new?.payload;
+        if (!nextPayload) {
+          return;
+        }
+
+        const nextSignature = createCloudSignature(nextPayload);
+        if (nextSignature === state.cloud.lastSignature) {
+          return;
+        }
+
+        applyCloudSnapshot(nextPayload);
+        persistAllLocal();
+        render();
+      }
+    )
+    .subscribe();
+}
+
+function queueCloudSync() {
+  if (!state.cloud.enabled || state.cloud.applyingRemote) {
+    return;
+  }
+
+  window.clearTimeout(state.cloud.syncTimer);
+  state.cloud.syncTimer = window.setTimeout(() => {
+    void saveCloudStateNow();
+  }, 300);
+}
+
+async function saveCloudStateNow() {
+  if (!state.cloud.enabled || !state.cloud.client) {
+    return;
+  }
+
+  const payload = serializeCloudState();
+  const signature = createCloudSignature(payload);
+  state.cloud.lastSignature = signature;
+
+  const { error } = await state.cloud.client.from(SUPABASE_TABLE).upsert(
+    {
+      id: state.cloud.config.stateId,
+      payload,
+      updated_at: new Date().toISOString(),
+    },
+    {
+      onConflict: "id",
+    }
+  );
+
+  if (error) {
+    console.error("Falha ao salvar dados online.", error);
+  }
+}
+
+function serializeCloudState() {
+  return {
+    expenses: state.expenses,
+    projectConfig: state.projectConfig,
+    suppliers: state.suppliers,
+    brandConfig: state.brandConfig,
+  };
+}
+
+function applyCloudSnapshot(payload) {
+  state.cloud.applyingRemote = true;
+  try {
+    state.expenses = (payload.expenses || initialExpenses).map(normalizeExpense);
+    state.projectConfig = { ...defaultProjectConfig, ...(payload.projectConfig || {}) };
+    state.suppliers = normalizeSuppliers(payload.suppliers);
+    state.brandConfig = { ...defaultBrandConfig, ...(payload.brandConfig || {}) };
+
+    ensureSuppliersFromExpenses();
+    resetForm();
+    resetSupplierForm();
+    fillBrandForm();
+    state.cloud.lastSignature = createCloudSignature(serializeCloudState());
+  } finally {
+    state.cloud.applyingRemote = false;
+  }
+}
+
+function createCloudSignature(payload) {
+  return JSON.stringify(payload);
 }
 
 function fillCategorySelects() {
@@ -1563,75 +1742,92 @@ function loadBrandConfig() {
 function loadSuppliers() {
   const saved = localStorage.getItem("obra-certa-suppliers");
   if (!saved) {
-    return defaultSuppliers.map((supplier) => ({ ...supplier }));
+    return normalizeSuppliers(defaultSuppliers);
   }
 
   try {
     const parsed = JSON.parse(saved);
-    if (!Array.isArray(parsed) || !parsed.length) {
-      return defaultSuppliers.map((supplier) => ({ ...supplier }));
-    }
-
-    return parsed.map((supplier) => {
-        if (typeof supplier === "string") {
-          return {
-            id: crypto.randomUUID(),
-            name: supplier,
-            tradeName: "",
-            cnpj: "",
-            stateRegistration: "",
-            email: "",
-            phone: "",
-            mobile: "",
-            zipCode: "",
-            address: "",
-            number: "",
-            complement: "",
-            district: "",
-            city: "",
-            state: "",
-            notes: "",
-          };
-        }
-
-        return {
-          id: supplier.id || crypto.randomUUID(),
-          name: normalizeSupplierName(supplier.name || ""),
-          tradeName: supplier.tradeName || "",
-          cnpj: supplier.cnpj || "",
-          stateRegistration: supplier.stateRegistration || "",
-          email: supplier.email || "",
-          phone: supplier.phone || "",
-          mobile: supplier.mobile || "",
-          zipCode: supplier.zipCode || "",
-          address: supplier.address || "",
-          number: supplier.number || "",
-          complement: supplier.complement || "",
-          district: supplier.district || "",
-          city: supplier.city || "",
-          state: supplier.state || "",
-          notes: supplier.notes || "",
-        };
-      }).filter((supplier) => supplier.name);
+    return normalizeSuppliers(parsed);
   } catch {
-    return defaultSuppliers.map((supplier) => ({ ...supplier }));
+    return normalizeSuppliers(defaultSuppliers);
   }
 }
 
 function persistExpenses() {
   localStorage.setItem("obra-certa-expenses", JSON.stringify(state.expenses));
+  queueCloudSync();
 }
 
 function persistProjectConfig() {
   localStorage.setItem("obra-certa-project-config", JSON.stringify(state.projectConfig));
+  queueCloudSync();
 }
 
 function persistBrandConfig() {
   localStorage.setItem("obra-certa-brand-config", JSON.stringify(state.brandConfig));
+  queueCloudSync();
 }
 
 function persistSuppliers() {
   localStorage.setItem("obra-certa-suppliers", JSON.stringify(state.suppliers));
+  queueCloudSync();
+}
+
+function persistAllLocal() {
+  localStorage.setItem("obra-certa-expenses", JSON.stringify(state.expenses));
+  localStorage.setItem("obra-certa-project-config", JSON.stringify(state.projectConfig));
+  localStorage.setItem("obra-certa-brand-config", JSON.stringify(state.brandConfig));
+  localStorage.setItem("obra-certa-suppliers", JSON.stringify(state.suppliers));
+}
+
+function normalizeSuppliers(suppliers) {
+  if (!Array.isArray(suppliers) || !suppliers.length) {
+    return defaultSuppliers.map((supplier) => normalizeSupplierRecord(supplier)).filter((supplier) => supplier.name);
+  }
+
+  return suppliers.map(normalizeSupplierRecord).filter((supplier) => supplier.name);
+}
+
+function normalizeSupplierRecord(supplier) {
+  if (typeof supplier === "string") {
+    return {
+      id: crypto.randomUUID(),
+      name: normalizeSupplierName(supplier),
+      tradeName: "",
+      cnpj: "",
+      stateRegistration: "",
+      email: "",
+      phone: "",
+      mobile: "",
+      zipCode: "",
+      address: "",
+      number: "",
+      complement: "",
+      district: "",
+      city: "",
+      state: "",
+      notes: "",
+    };
+  }
+
+  return {
+    id: supplier?.id || crypto.randomUUID(),
+    name: normalizeSupplierName(supplier?.name || ""),
+    tradeName: supplier?.tradeName || "",
+    cnpj: supplier?.cnpj || "",
+    stateRegistration: supplier?.stateRegistration || "",
+    email: supplier?.email || "",
+    phone: supplier?.phone || "",
+    mobile: supplier?.mobile || "",
+    zipCode: supplier?.zipCode || "",
+    address: supplier?.address || "",
+    number: supplier?.number || "",
+    complement: supplier?.complement || "",
+    district: supplier?.district || "",
+    city: supplier?.city || "",
+    state: supplier?.state || "",
+    notes: supplier?.notes || "",
+  };
 }
 
 function formatCurrency(value) {
