@@ -193,10 +193,13 @@ const defaultCloudConfig = {
   url: "",
   anonKey: "",
   stateId: "main",
+  accessKey: "",
 };
 
 const CITY_API_BASE_URL = "https://servicodados.ibge.gov.br/api/v1/localidades/estados";
 const cityOptionsCache = new Map();
+const CLOUD_ACCESS_KEY_STORAGE = "obra-certa-cloud-access-key";
+const CLOUD_POLL_INTERVAL_MS = 15000;
 
 const state = {
   expenses: loadExpenses().map(normalizeExpense),
@@ -365,10 +368,10 @@ function createCloudState() {
   return {
     config,
     client: null,
-    channel: null,
     enabled: false,
     applyingRemote: false,
     syncTimer: null,
+    pollTimer: null,
     lastSignature: "",
   };
 }
@@ -384,6 +387,11 @@ async function initializeCloudSync() {
   }
 
   try {
+    await ensureCloudAccessKey();
+    if (!state.cloud.config.accessKey) {
+      return;
+    }
+
     state.cloud.client = window.supabase.createClient(
       state.cloud.config.url,
       state.cloud.config.anonKey,
@@ -391,6 +399,11 @@ async function initializeCloudSync() {
         auth: {
           persistSession: false,
           autoRefreshToken: false,
+        },
+        global: {
+          headers: {
+            "x-obra-certa-key": state.cloud.config.accessKey,
+          },
         },
       }
     );
@@ -415,7 +428,7 @@ async function initializeCloudSync() {
       await saveCloudStateNow();
     }
 
-    subscribeToCloudChanges();
+    startCloudPolling();
   } catch (error) {
     console.error("Falha ao iniciar sincronizacao com Supabase.", error);
     state.cloud.enabled = false;
@@ -423,40 +436,15 @@ async function initializeCloudSync() {
   }
 }
 
-function subscribeToCloudChanges() {
+function startCloudPolling() {
   if (!state.cloud.client) {
     return;
   }
 
-  state.cloud.channel?.unsubscribe();
-
-  state.cloud.channel = state.cloud.client
-    .channel(`obra-certa-${state.cloud.config.stateId}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: SUPABASE_TABLE,
-        filter: `id=eq.${state.cloud.config.stateId}`,
-      },
-      (payload) => {
-        const nextPayload = payload.new?.payload;
-        if (!nextPayload) {
-          return;
-        }
-
-        const nextSignature = createCloudSignature(nextPayload);
-        if (nextSignature === state.cloud.lastSignature) {
-          return;
-        }
-
-        applyCloudSnapshot(nextPayload);
-        persistAllLocal();
-        render();
-      }
-    )
-    .subscribe();
+  window.clearInterval(state.cloud.pollTimer);
+  state.cloud.pollTimer = window.setInterval(() => {
+    void refreshCloudState();
+  }, CLOUD_POLL_INTERVAL_MS);
 }
 
 function queueCloudSync() {
@@ -468,6 +456,31 @@ function queueCloudSync() {
   state.cloud.syncTimer = window.setTimeout(() => {
     void saveCloudStateNow();
   }, 300);
+}
+
+async function refreshCloudState() {
+  if (!state.cloud.enabled || !state.cloud.client || state.cloud.applyingRemote) {
+    return;
+  }
+
+  const { data, error } = await state.cloud.client
+    .from(SUPABASE_TABLE)
+    .select("id, payload")
+    .eq("id", state.cloud.config.stateId)
+    .maybeSingle();
+
+  if (error || !data?.payload) {
+    return;
+  }
+
+  const nextSignature = createCloudSignature(data.payload);
+  if (nextSignature === state.cloud.lastSignature) {
+    return;
+  }
+
+  applyCloudSnapshot(data.payload);
+  persistAllLocal();
+  render();
 }
 
 async function saveCloudStateNow() {
@@ -497,6 +510,7 @@ async function saveCloudStateNow() {
 
 function serializeCloudState() {
   return {
+    accessKey: state.cloud.config.accessKey,
     expenses: state.expenses,
     projectConfig: state.projectConfig,
     suppliers: state.suppliers,
@@ -524,6 +538,34 @@ function applyCloudSnapshot(payload) {
 
 function createCloudSignature(payload) {
   return JSON.stringify(payload);
+}
+
+async function ensureCloudAccessKey() {
+  const configuredKey = state.cloud.config.accessKey?.trim();
+  if (configuredKey) {
+    state.cloud.config.accessKey = configuredKey;
+    localStorage.setItem(CLOUD_ACCESS_KEY_STORAGE, configuredKey);
+    return;
+  }
+
+  const savedKey = localStorage.getItem(CLOUD_ACCESS_KEY_STORAGE)?.trim();
+  if (savedKey) {
+    state.cloud.config.accessKey = savedKey;
+    return;
+  }
+
+  const promptedKey = window.prompt(
+    "Informe a chave de sincronizacao do ObraCerta para conectar este aparelho:"
+  );
+
+  const normalizedKey = promptedKey?.trim();
+  if (!normalizedKey) {
+    window.alert("Sincronizacao online desativada neste aparelho. Defina a chave para reativar.");
+    return;
+  }
+
+  state.cloud.config.accessKey = normalizedKey;
+  localStorage.setItem(CLOUD_ACCESS_KEY_STORAGE, normalizedKey);
 }
 
 function fillCategorySelects() {

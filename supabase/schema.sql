@@ -6,26 +6,46 @@ create table if not exists public.app_state (
 
 alter table public.app_state enable row level security;
 
-drop policy if exists "Public read app_state" on public.app_state;
-create policy "Public read app_state"
+create or replace function public.obra_certa_request_key()
+returns text
+language sql
+stable
+as $$
+  select coalesce(
+    nullif(current_setting('request.headers', true)::json ->> 'x-obra-certa-key', ''),
+    ''
+  );
+$$;
+
+drop policy if exists "Secure read app_state" on public.app_state;
+create policy "Secure read app_state"
 on public.app_state
 for select
 to anon
-using (true);
+using (
+  public.obra_certa_request_key() = coalesce(payload ->> 'accessKey', '')
+);
 
-drop policy if exists "Public insert app_state" on public.app_state;
-create policy "Public insert app_state"
+drop policy if exists "Secure insert app_state" on public.app_state;
+create policy "Secure insert app_state"
 on public.app_state
 for insert
 to anon
-with check (true);
+with check (
+  public.obra_certa_request_key() <> ''
+  and public.obra_certa_request_key() = coalesce(payload ->> 'accessKey', '')
+);
 
-drop policy if exists "Public update app_state" on public.app_state;
-create policy "Public update app_state"
+drop policy if exists "Secure update app_state" on public.app_state;
+create policy "Secure update app_state"
 on public.app_state
 for update
 to anon
-using (true)
-with check (true);
-
-alter publication supabase_realtime add table public.app_state;
+using (
+  coalesce(payload ->> 'accessKey', '') = ''
+  or public.obra_certa_request_key() = coalesce(payload ->> 'accessKey', '')
+)
+with check (
+  public.obra_certa_request_key() <> ''
+  and public.obra_certa_request_key() = coalesce(payload ->> 'accessKey', '')
+);
