@@ -578,6 +578,36 @@ body::before {
   font-size: 0.88rem;
 }
 
+.supplier-edit-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(15, 118, 110, 0.22);
+  background: linear-gradient(135deg, rgba(15, 118, 110, 0.12), rgba(217, 119, 6, 0.1));
+}
+
+.supplier-edit-notice strong,
+.supplier-edit-notice small {
+  display: block;
+}
+
+.supplier-edit-notice strong {
+  font-size: 1rem;
+}
+
+.supplier-edit-notice small {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.mode-badge.is-editing {
+  background: rgba(217, 119, 6, 0.14);
+  color: #9a3412;
+}
+
 .supplier-directory {
   display: grid;
   gap: 18px;
@@ -604,7 +634,7 @@ body::before {
 
 .supplier-directory-grid {
   display: grid;
-  grid-template-columns: minmax(300px, 0.95fr) minmax(0, 1.25fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
 }
 
@@ -626,6 +656,7 @@ body::before {
 
 .supplier-directory-item {
   width: 100%;
+  padding: 14px 16px;
   text-align: left;
   color: inherit;
   cursor: pointer;
@@ -654,6 +685,12 @@ body::before {
 .supplier-directory-item strong,
 .supplier-detail-card strong {
   display: block;
+}
+
+.supplier-directory-top span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
 }
 
 .supplier-directory-item small,
@@ -686,6 +723,17 @@ body::before {
 .supplier-detail-card {
   min-height: 320px;
   align-content: start;
+}
+
+.supplier-detail-modal {
+  width: min(1100px, 100%);
+}
+
+.supplier-detail-card-modal {
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .supplier-detail-header {
@@ -1046,6 +1094,7 @@ tbody tr:hover {
   .chart-grid,
   .panel-grid,
   .import-box,
+  .supplier-edit-notice,
   .supplier-form,
   .supplier-directory-toolbar,
   .supplier-directory-grid,

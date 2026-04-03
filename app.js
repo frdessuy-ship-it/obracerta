@@ -263,10 +263,16 @@ const elements = {
   supplierSubmitButton: document.querySelector("#supplierSubmitButton"),
   cancelSupplierEditButton: document.querySelector("#cancelSupplierEditButton"),
   supplierFormModeBadge: document.querySelector("#supplierFormModeBadge"),
+  supplierEditNotice: document.querySelector("#supplierEditNotice"),
+  supplierEditNoticeTitle: document.querySelector("#supplierEditNoticeTitle"),
+  supplierEditNoticeText: document.querySelector("#supplierEditNoticeText"),
+  supplierEditNoticeCancelButton: document.querySelector("#supplierEditNoticeCancelButton"),
   supplierSearchInput: document.querySelector("#supplierSearchInput"),
   clearSupplierSearchButton: document.querySelector("#clearSupplierSearchButton"),
   supplierDirectorySummary: document.querySelector("#supplierDirectorySummary"),
   supplierDirectoryList: document.querySelector("#supplierDirectoryList"),
+  supplierDetailOverlay: document.querySelector("#supplierDetailOverlay"),
+  closeSupplierDetailOverlayButton: document.querySelector("#closeSupplierDetailOverlayButton"),
   supplierDetailCard: document.querySelector("#supplierDetailCard"),
   graphSummary: document.querySelector("#graphSummary"),
   graphMainTitle: document.querySelector("#graphMainTitle"),
@@ -303,6 +309,7 @@ const elements = {
 bootstrap();
 
 async function bootstrap() {
+  registerServiceWorker();
   fillBrandForm();
   fillCategorySelects();
   ensureSuppliersFromExpenses();
@@ -310,6 +317,18 @@ async function bootstrap() {
   setExpenseItems([createEmptyExpenseItem()]);
   render();
   await initializeCloudSync();
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator) || location.protocol === "file:") {
+    return;
+  }
+
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js").catch((error) => {
+      console.error("Falha ao registrar o service worker.", error);
+    });
+  });
 }
 
 function bindEvents() {
@@ -339,6 +358,13 @@ function bindEvents() {
   elements.lookupCnpjButton.addEventListener("click", handleCnpjLookup);
   elements.supplierForm.addEventListener("submit", handleSupplierSubmit);
   elements.cancelSupplierEditButton.addEventListener("click", resetSupplierForm);
+  elements.supplierEditNoticeCancelButton.addEventListener("click", resetSupplierForm);
+  elements.closeSupplierDetailOverlayButton.addEventListener("click", closeSupplierDetailOverlay);
+  elements.supplierDetailOverlay.addEventListener("click", (event) => {
+    if (event.target === elements.supplierDetailOverlay) {
+      closeSupplierDetailOverlay();
+    }
+  });
   elements.supplierState.addEventListener("input", handleSupplierStateInput);
   elements.supplierState.addEventListener("blur", handleSupplierStateBlur);
   elements.supplierCity.addEventListener("focus", handleSupplierCityFocus);
@@ -890,9 +916,6 @@ function renderSupplierDirectory() {
     elements.supplierDirectoryList.innerHTML = `
       <div class="supplier-directory-empty">Nenhum fornecedor encontrado com esse filtro.</div>
     `;
-    elements.supplierDetailCard.innerHTML = `
-      <div class="empty-state">Ajuste a busca ou limpe o filtro para ver os cadastros.</div>
-    `;
     return;
   }
 
@@ -908,14 +931,8 @@ function renderSupplierDirectory() {
           <div class="supplier-directory-top">
             <div>
               <strong>${escapeHtml(supplier.name)}</strong>
-              <small>${escapeHtml(supplier.tradeName || "Clique para visualizar os detalhes")}</small>
             </div>
-            <span>${formatCurrency(getSpentBySupplier(supplier.name))}</span>
-          </div>
-          <div class="supplier-directory-meta">
-            <span>${escapeHtml(supplier.city || "-")} / ${escapeHtml(supplier.state || "-")}</span>
-            <span>${escapeHtml(supplier.cnpj || "Sem CNPJ")}</span>
-            <span>${escapeHtml(supplier.phone || supplier.mobile || "Sem telefone")}</span>
+            <span>${isActive ? "Selecionado" : "Abrir"}</span>
           </div>
         </button>
       `;
@@ -924,12 +941,9 @@ function renderSupplierDirectory() {
 
   elements.supplierDirectoryList.querySelectorAll("[data-open-supplier-card]").forEach((button) => {
     button.addEventListener("click", () => {
-      state.selectedSupplierId = button.dataset.openSupplierCard;
-      renderSupplierDirectory();
+      openSupplierDetailOverlay(button.dataset.openSupplierCard);
     });
   });
-
-  renderSupplierDetailCard(selectedSupplier || filteredSuppliers[0]);
 }
 
 function renderSupplierDetailCard(supplier) {
@@ -982,11 +996,29 @@ function renderSupplierDetailCard(supplier) {
 
   elements.supplierDetailCard
     .querySelector('[data-edit-directory-supplier]')
-    .addEventListener("click", () => startSupplierEdit(supplier.id));
+    .addEventListener("click", () => {
+      closeSupplierDetailOverlay();
+      startSupplierEdit(supplier.id);
+    });
 
   elements.supplierDetailCard
     .querySelector('[data-delete-directory-supplier]')
     .addEventListener("click", () => deleteSupplier(supplier.id));
+}
+
+function openSupplierDetailOverlay(supplierId) {
+  const supplier = state.suppliers.find((item) => item.id === supplierId);
+  if (!supplier) {
+    return;
+  }
+
+  state.selectedSupplierId = supplierId;
+  renderSupplierDetailCard(supplier);
+  elements.supplierDetailOverlay.hidden = false;
+}
+
+function closeSupplierDetailOverlay() {
+  elements.supplierDetailOverlay.hidden = true;
 }
 
 function renderSupplierDetailField(label, value, isFullWidth = false) {
@@ -1811,9 +1843,19 @@ function distributeXmlDiscount(items, totalDiscount) {
 
 function renderSupplierFormState() {
   const isEditing = Boolean(state.editingSupplierId);
-  elements.supplierSubmitButton.textContent = isEditing ? "Salvar fornecedor" : "Cadastrar fornecedor";
+  const editingSupplier = state.suppliers.find((supplier) => supplier.id === state.editingSupplierId) || null;
+
+  elements.supplierSubmitButton.textContent = isEditing ? "Salvar alteracoes do fornecedor" : "Cadastrar fornecedor";
   elements.cancelSupplierEditButton.hidden = !isEditing;
-  elements.supplierFormModeBadge.textContent = isEditing ? "Modo edicao" : "Modo criacao";
+  elements.supplierFormModeBadge.textContent = isEditing ? "Modo edicao ativa" : "Modo criacao";
+  elements.supplierFormModeBadge.classList.toggle("is-editing", isEditing);
+  elements.supplierEditNotice.hidden = !isEditing;
+
+  if (isEditing && editingSupplier) {
+    elements.supplierEditNoticeTitle.textContent = `Editando: ${editingSupplier.name}`;
+    elements.supplierEditNoticeText.textContent =
+      "Os campos abaixo pertencem a este fornecedor. Salve para atualizar ou cancele para voltar ao modo de criacao.";
+  }
 }
 
 function startSupplierEdit(supplierId) {
@@ -1878,6 +1920,7 @@ function deleteSupplier(supplierId) {
   state.suppliers = state.suppliers.filter((item) => item.id !== supplierId);
   if (state.selectedSupplierId === supplierId) {
     state.selectedSupplierId = null;
+    closeSupplierDetailOverlay();
   }
   if (state.editingSupplierId === supplierId) {
     resetSupplierForm();

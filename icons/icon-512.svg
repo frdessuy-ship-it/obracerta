@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ObraCerta">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f766e"/>
+      <stop offset="100%" stop-color="#115e59"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+  <rect x="74" y="96" width="364" height="320" rx="48" fill="#f7f3eb" opacity="0.98"/>
+  <path d="M128 332 L256 190 L384 332" fill="none" stroke="#d97706" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M166 332 V250" stroke="#0f766e" stroke-width="30" stroke-linecap="round"/>
+  <path d="M256 332 V222" stroke="#0f766e" stroke-width="30" stroke-linecap="round"/>
+  <path d="M346 332 V266" stroke="#0f766e" stroke-width="30" stroke-linecap="round"/>
+</svg>

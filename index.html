@@ -4,6 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ObraCerta</title>
+  <meta name="theme-color" content="#0f766e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="ObraCerta">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="./icons/icon-192.svg">
+  <link rel="apple-touch-icon" href="./icons/icon-192.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -272,6 +280,15 @@
             </div>
 
             <form id="supplierForm" class="supplier-form full-cadastro-form">
+              <div id="supplierEditNotice" class="supplier-edit-notice full-width" hidden>
+                <div>
+                  <p class="eyebrow">Edicao ativa</p>
+                  <strong id="supplierEditNoticeTitle">Fornecedor em edicao</strong>
+                  <small id="supplierEditNoticeText">Revise os dados abaixo e clique em salvar para atualizar o cadastro.</small>
+                </div>
+                <button type="button" id="supplierEditNoticeCancelButton" class="secondary-button">Cancelar edicao</button>
+              </div>
+
               <label>
                 Nome
                 <input type="text" id="supplierName" placeholder="Nome do fornecedor" required>
@@ -365,12 +382,24 @@
 
               <div class="supplier-directory-grid">
                 <div id="supplierDirectoryList" class="supplier-directory-list"></div>
-
-                <article id="supplierDetailCard" class="supplier-detail-card">
-                  <div class="empty-state">Selecione um fornecedor na lista para visualizar os detalhes.</div>
-                </article>
               </div>
             </section>
+
+            <div id="supplierDetailOverlay" class="overlay" hidden>
+              <section class="overlay-card supplier-detail-modal">
+                <div class="panel-header">
+                  <div>
+                    <p class="eyebrow">Fornecedor</p>
+                    <h3>Detalhes do cadastro</h3>
+                  </div>
+                  <button type="button" id="closeSupplierDetailOverlayButton" class="secondary-button">Fechar</button>
+                </div>
+
+                <article id="supplierDetailCard" class="supplier-detail-card supplier-detail-card-modal">
+                  <div class="empty-state">Selecione um fornecedor na lista para visualizar os detalhes.</div>
+                </article>
+              </section>
+            </div>
 
         </section>
       </section>
