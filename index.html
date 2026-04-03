@@ -305,7 +305,10 @@
               </label>
               <label>
                 CEP
-                <input type="text" id="supplierZipCode" placeholder="Opcional">
+                <div class="inline-field-action">
+                  <input type="text" id="supplierZipCode" placeholder="Opcional">
+                  <button type="button" id="lookupZipCodeButton" class="secondary-button inline-action-button">Buscar CEP</button>
+                </div>
               </label>
               <label>
                 Endereco
@@ -325,7 +328,8 @@
               </label>
               <label>
                 Cidade
-                <input type="text" id="supplierCity" placeholder="Opcional">
+                <input type="text" id="supplierCity" list="supplierCitySuggestions" placeholder="Opcional">
+                <datalist id="supplierCitySuggestions"></datalist>
               </label>
               <label>
                 Estado
@@ -341,6 +345,32 @@
               </div>
               <small class="full-width form-helper">Informe o CNPJ e use a busca automatica para preencher os dados principais do cadastro.</small>
             </form>
+
+            <section class="supplier-directory">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">Fornecedores</p>
+                  <h3>Pesquisar e visualizar cadastros</h3>
+                </div>
+                <span id="supplierDirectorySummary" class="mode-badge">0 fornecedor(es)</span>
+              </div>
+
+              <div class="supplier-directory-toolbar">
+                <label class="supplier-search-field">
+                  Buscar fornecedor
+                  <input type="search" id="supplierSearchInput" placeholder="Digite nome, CNPJ, cidade ou telefone">
+                </label>
+                <button type="button" id="clearSupplierSearchButton" class="secondary-button">Limpar busca</button>
+              </div>
+
+              <div class="supplier-directory-grid">
+                <div id="supplierDirectoryList" class="supplier-directory-list"></div>
+
+                <article id="supplierDetailCard" class="supplier-detail-card">
+                  <div class="empty-state">Selecione um fornecedor na lista para visualizar os detalhes.</div>
+                </article>
+              </div>
+            </section>
 
         </section>
       </section>

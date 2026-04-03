@@ -1,4 +1,4 @@
-const defaultProjectConfig = {
+﻿const defaultProjectConfig = {
   name: "Casa Bairro Universitario",
   saleTarget: 350000,
   landValue: 90000,
@@ -195,10 +195,15 @@ const defaultCloudConfig = {
   stateId: "main",
 };
 
+const CITY_API_BASE_URL = "https://servicodados.ibge.gov.br/api/v1/localidades/estados";
+const cityOptionsCache = new Map();
+
 const state = {
   expenses: loadExpenses().map(normalizeExpense),
   editingExpenseId: null,
   editingSupplierId: null,
+  selectedSupplierId: null,
+  supplierSearchTerm: "",
   currentView: "dashboard",
   projectConfig: loadProjectConfig(),
   suppliers: loadSuppliers(),
@@ -216,7 +221,6 @@ const elements = {
   landValue: document.querySelector("#landValue"),
   totalSpent: document.querySelector("#totalSpent"),
   totalProjectCost: document.querySelector("#totalProjectCost"),
-  constructionCost: document.querySelector("#constructionCost"),
   costPerSquareMeter: document.querySelector("#costPerSquareMeter"),
   profitValue: document.querySelector("#profitValue"),
   profitMargin: document.querySelector("#profitMargin"),
@@ -248,13 +252,19 @@ const elements = {
   supplierComplement: document.querySelector("#supplierComplement"),
   supplierDistrict: document.querySelector("#supplierDistrict"),
   supplierCity: document.querySelector("#supplierCity"),
+  supplierCitySuggestions: document.querySelector("#supplierCitySuggestions"),
   supplierState: document.querySelector("#supplierState"),
   supplierNotes: document.querySelector("#supplierNotes"),
+  lookupZipCodeButton: document.querySelector("#lookupZipCodeButton"),
   lookupCnpjButton: document.querySelector("#lookupCnpjButton"),
   supplierSubmitButton: document.querySelector("#supplierSubmitButton"),
   cancelSupplierEditButton: document.querySelector("#cancelSupplierEditButton"),
   supplierFormModeBadge: document.querySelector("#supplierFormModeBadge"),
-  supplierList: document.querySelector("#supplierList"),
+  supplierSearchInput: document.querySelector("#supplierSearchInput"),
+  clearSupplierSearchButton: document.querySelector("#clearSupplierSearchButton"),
+  supplierDirectorySummary: document.querySelector("#supplierDirectorySummary"),
+  supplierDirectoryList: document.querySelector("#supplierDirectoryList"),
+  supplierDetailCard: document.querySelector("#supplierDetailCard"),
   graphSummary: document.querySelector("#graphSummary"),
   graphMainTitle: document.querySelector("#graphMainTitle"),
   graphBackButton: document.querySelector("#graphBackButton"),
@@ -268,7 +278,6 @@ const elements = {
   expenseItemsBody: document.querySelector("#expenseItemsBody"),
   expenseItemsTotal: document.querySelector("#expenseItemsTotal"),
   expenseDate: document.querySelector("#expenseDate"),
-  expenseCategory: document.querySelector("#expenseCategory"),
   expenseSupplier: document.querySelector("#expenseSupplier"),
   expenseInvoice: document.querySelector("#expenseInvoice"),
   expenseNotes: document.querySelector("#expenseNotes"),
@@ -323,9 +332,16 @@ function bindEvents() {
   elements.saleTargetCardButton.addEventListener("click", editSaleTarget);
   elements.landValueCard.addEventListener("click", editLandValue);
   elements.projectAreaCard.addEventListener("click", editProjectArea);
+  elements.lookupZipCodeButton.addEventListener("click", handleZipCodeLookup);
   elements.lookupCnpjButton.addEventListener("click", handleCnpjLookup);
   elements.supplierForm.addEventListener("submit", handleSupplierSubmit);
   elements.cancelSupplierEditButton.addEventListener("click", resetSupplierForm);
+  elements.supplierState.addEventListener("input", handleSupplierStateInput);
+  elements.supplierState.addEventListener("blur", handleSupplierStateBlur);
+  elements.supplierCity.addEventListener("focus", handleSupplierCityFocus);
+  elements.supplierZipCode.addEventListener("blur", handleSupplierZipCodeBlur);
+  elements.supplierSearchInput.addEventListener("input", handleSupplierSearchChange);
+  elements.clearSupplierSearchButton.addEventListener("click", clearSupplierSearch);
   elements.expenseForm.addEventListener("submit", handleExpenseSubmit);
   elements.cancelEditButton.addEventListener("click", resetForm);
   elements.filterDateFrom.addEventListener("change", handleReportFilterChange);
@@ -626,9 +642,20 @@ async function handleInvoiceXmlImport(event) {
 
 function handleSupplierSubmit(event) {
   event.preventDefault();
+  const normalizedState = normalizeStateCode(elements.supplierState.value);
+  const normalizedCity = elements.supplierCity.value.trim();
   const supplierName = normalizeSupplierName(elements.supplierName.value);
+  let savedSupplierId = state.editingSupplierId;
 
   if (!supplierName) {
+    return;
+  }
+
+  elements.supplierState.value = normalizedState;
+
+  if (normalizedState && normalizedCity && !isKnownCityForState(normalizedState, normalizedCity)) {
+    window.alert(`A cidade informada nao foi encontrada para o estado ${normalizedState}.`);
+    elements.supplierCity.focus();
     return;
   }
 
@@ -661,8 +688,8 @@ function handleSupplierSubmit(event) {
                 number: elements.supplierNumber.value.trim(),
                 complement: elements.supplierComplement.value.trim(),
                 district: elements.supplierDistrict.value.trim(),
-                city: elements.supplierCity.value.trim(),
-                state: elements.supplierState.value.trim(),
+                city: normalizedCity,
+                state: normalizedState,
                 notes: elements.supplierNotes.value.trim(),
               }
             : supplier
@@ -676,10 +703,11 @@ function handleSupplierSubmit(event) {
       persistExpenses();
     }
   } else {
+    savedSupplierId = crypto.randomUUID();
     state.suppliers = [
         ...state.suppliers,
         {
-          id: crypto.randomUUID(),
+          id: savedSupplierId,
           name: supplierName,
           tradeName: elements.supplierTradeName.value.trim(),
           cnpj: elements.supplierCnpj.value.trim(),
@@ -692,15 +720,17 @@ function handleSupplierSubmit(event) {
           number: elements.supplierNumber.value.trim(),
           complement: elements.supplierComplement.value.trim(),
           district: elements.supplierDistrict.value.trim(),
-          city: elements.supplierCity.value.trim(),
-          state: elements.supplierState.value.trim(),
+          city: normalizedCity,
+          state: normalizedState,
           notes: elements.supplierNotes.value.trim(),
         },
       ].sort((a, b) => a.name.localeCompare(b.name));
-    }
+  }
 
   persistSuppliers();
+  state.selectedSupplierId = savedSupplierId || state.selectedSupplierId;
   resetSupplierForm();
+  ensureSelectedSupplierIsVisible();
   render();
 }
 
@@ -709,7 +739,7 @@ function render() {
   elements.expenseDate.value ||= today();
   fillSupplierSelect();
   renderSupplierFormState();
-  renderSupplierCatalog();
+  renderSupplierDirectory();
   renderSuppliersOverview();
   renderDashboard();
   renderSummaries();
@@ -718,6 +748,44 @@ function render() {
   renderFormState();
   renderView();
   renderTable();
+}
+
+function handleSupplierSearchChange(event) {
+  state.supplierSearchTerm = event.target.value.trim();
+  ensureSelectedSupplierIsVisible();
+  renderSupplierDirectory();
+}
+
+function clearSupplierSearch() {
+  state.supplierSearchTerm = "";
+  elements.supplierSearchInput.value = "";
+  ensureSelectedSupplierIsVisible();
+  renderSupplierDirectory();
+}
+
+function handleSupplierStateInput() {
+  const normalizedState = normalizeStateCode(elements.supplierState.value);
+  elements.supplierState.value = normalizedState;
+
+  if (normalizedState.length < 2) {
+    renderCitySuggestions([]);
+  }
+}
+
+function handleSupplierStateBlur() {
+  void loadCitiesForSelectedState();
+}
+
+function handleSupplierCityFocus() {
+  if (!elements.supplierState.value.trim()) {
+    return;
+  }
+
+  void loadCitiesForSelectedState();
+}
+
+function handleSupplierZipCodeBlur() {
+  elements.supplierZipCode.value = formatZipCode(elements.supplierZipCode.value.trim());
 }
 
 function renderBrandBlock() {
@@ -760,15 +828,170 @@ function renderDashboard() {
 
   elements.saleTargetCard.textContent = formatCurrency(state.projectConfig.saleTarget);
   elements.landValue.textContent = formatCurrency(state.projectConfig.landValue);
-  elements.projectAreaValue.textContent = `${formatNumber(state.projectConfig.areaSquareMeters)} m²`;
+  elements.projectAreaValue.textContent = `${formatNumber(state.projectConfig.areaSquareMeters)} m2`;
   elements.totalSpent.textContent = formatCurrency(constructionCost);
   elements.totalProjectCost.textContent = formatCurrency(totalProjectCost);
-  if (elements.constructionCost) {
-    elements.constructionCost.textContent = formatCurrency(constructionCost);
-  }
   elements.costPerSquareMeter.textContent = formatCurrency(costPerSquareMeter);
   elements.profitValue.textContent = formatCurrency(profitValue);
   elements.profitMargin.textContent = formatPercent(profitMargin);
+}
+
+function renderSupplierDirectory() {
+  elements.supplierSearchInput.value = state.supplierSearchTerm;
+  ensureSelectedSupplierIsVisible();
+  const filteredSuppliers = getSupplierDirectoryMatches();
+  const selectedSupplier = filteredSuppliers.find((supplier) => supplier.id === state.selectedSupplierId) || null;
+
+  elements.supplierDirectorySummary.textContent = `${filteredSuppliers.length} fornecedor(es)`;
+
+  if (!filteredSuppliers.length) {
+    elements.supplierDirectoryList.innerHTML = `
+      <div class="supplier-directory-empty">Nenhum fornecedor encontrado com esse filtro.</div>
+    `;
+    elements.supplierDetailCard.innerHTML = `
+      <div class="empty-state">Ajuste a busca ou limpe o filtro para ver os cadastros.</div>
+    `;
+    return;
+  }
+
+  elements.supplierDirectoryList.innerHTML = filteredSuppliers
+    .map((supplier) => {
+      const isActive = supplier.id === selectedSupplier?.id;
+      return `
+        <button
+          type="button"
+          class="supplier-directory-item${isActive ? " is-active" : ""}"
+          data-open-supplier-card="${supplier.id}"
+        >
+          <div class="supplier-directory-top">
+            <div>
+              <strong>${escapeHtml(supplier.name)}</strong>
+              <small>${escapeHtml(supplier.tradeName || "Clique para visualizar os detalhes")}</small>
+            </div>
+            <span>${formatCurrency(getSpentBySupplier(supplier.name))}</span>
+          </div>
+          <div class="supplier-directory-meta">
+            <span>${escapeHtml(supplier.city || "-")} / ${escapeHtml(supplier.state || "-")}</span>
+            <span>${escapeHtml(supplier.cnpj || "Sem CNPJ")}</span>
+            <span>${escapeHtml(supplier.phone || supplier.mobile || "Sem telefone")}</span>
+          </div>
+        </button>
+      `;
+    })
+    .join("");
+
+  elements.supplierDirectoryList.querySelectorAll("[data-open-supplier-card]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedSupplierId = button.dataset.openSupplierCard;
+      renderSupplierDirectory();
+    });
+  });
+
+  renderSupplierDetailCard(selectedSupplier || filteredSuppliers[0]);
+}
+
+function renderSupplierDetailCard(supplier) {
+  if (!supplier) {
+    elements.supplierDetailCard.innerHTML = `
+      <div class="empty-state">Selecione um fornecedor na lista para visualizar os detalhes.</div>
+    `;
+    return;
+  }
+
+  if (state.selectedSupplierId !== supplier.id) {
+    state.selectedSupplierId = supplier.id;
+  }
+
+  const launches = state.expenses.filter((expense) => expense.supplier === supplier.name).length;
+
+  elements.supplierDetailCard.innerHTML = `
+    <div class="supplier-detail-header">
+      <div class="supplier-detail-top">
+        <div>
+          <p class="eyebrow">Visualizacao do fornecedor</p>
+          <h3>${escapeHtml(supplier.name)}</h3>
+          <small>${escapeHtml(supplier.tradeName || "Sem nome fantasia cadastrado")}</small>
+        </div>
+        <div class="supplier-detail-total">
+          <span>Total lancado</span>
+          <strong>${formatCurrency(getSpentBySupplier(supplier.name))}</strong>
+          <small>${launches} lancamento(s)</small>
+        </div>
+      </div>
+    </div>
+
+    <div class="supplier-detail-meta">
+      ${renderSupplierDetailField("CNPJ", supplier.cnpj)}
+      ${renderSupplierDetailField("IE", supplier.stateRegistration)}
+      ${renderSupplierDetailField("Email", supplier.email)}
+      ${renderSupplierDetailField("Telefone", supplier.phone)}
+      ${renderSupplierDetailField("Celular", supplier.mobile)}
+      ${renderSupplierDetailField("CEP", supplier.zipCode)}
+      ${renderSupplierDetailField("Endereco", formatAddressLine(supplier), true)}
+      ${renderSupplierDetailField("Cidade / UF", formatCityStateLine(supplier))}
+      ${renderSupplierDetailField("Observacoes", supplier.notes, true)}
+    </div>
+
+    <div class="supplier-detail-actions">
+      <button type="button" class="primary-button" data-edit-directory-supplier="${supplier.id}">Editar fornecedor</button>
+      <button type="button" class="secondary-button" data-delete-directory-supplier="${supplier.id}">Excluir fornecedor</button>
+    </div>
+  `;
+
+  elements.supplierDetailCard
+    .querySelector('[data-edit-directory-supplier]')
+    .addEventListener("click", () => startSupplierEdit(supplier.id));
+
+  elements.supplierDetailCard
+    .querySelector('[data-delete-directory-supplier]')
+    .addEventListener("click", () => deleteSupplier(supplier.id));
+}
+
+function renderSupplierDetailField(label, value, isFullWidth = false) {
+  const normalizedValue = value && value !== "-" ? value : "Nao informado";
+  return `
+    <div class="supplier-detail-field${isFullWidth ? " full-width" : ""}">
+      <label>${label}</label>
+      <span>${escapeHtml(normalizedValue)}</span>
+    </div>
+  `;
+}
+
+function getSupplierDirectoryMatches() {
+  const searchTerm = normalizeSearchText(state.supplierSearchTerm);
+  const suppliers = state.suppliers
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!searchTerm) {
+    return suppliers;
+  }
+
+  return suppliers.filter((supplier) => {
+    const haystack = normalizeSearchText([
+      supplier.name,
+      supplier.tradeName,
+      supplier.cnpj,
+      supplier.email,
+      supplier.phone,
+      supplier.mobile,
+      supplier.city,
+      supplier.state,
+    ].filter(Boolean).join(" "));
+
+    return haystack.includes(searchTerm);
+  });
+}
+
+function ensureSelectedSupplierIsVisible() {
+  const filteredSuppliers = getSupplierDirectoryMatches();
+  const hasCurrentSelection = filteredSuppliers.some((supplier) => supplier.id === state.selectedSupplierId);
+
+  if (hasCurrentSelection) {
+    return;
+  }
+
+  state.selectedSupplierId = filteredSuppliers[0]?.id || null;
 }
 
 function renderSummaries() {
@@ -872,7 +1095,7 @@ function renderGraphDetail() {
   const total = filtered.reduce((sum, expense) => sum + getExpenseTotal(expense), 0);
 
   elements.graphDetailTitle.textContent = detailLabel;
-  elements.graphDetailSummary.textContent = `${filtered.length} lancamento(s) • ${formatCurrency(total)}`;
+  elements.graphDetailSummary.textContent = `${filtered.length} lancamento(s)  -  ${formatCurrency(total)}`;
 
   elements.graphDetailBody.innerHTML = sorted
     .map(
@@ -955,7 +1178,7 @@ function renderGraphDetailForDescription(description) {
   const total = filtered.reduce((sum, expense) => sum + getExpenseTotal(expense), 0);
 
   elements.graphDetailTitle.textContent = `Item: ${description}`;
-  elements.graphDetailSummary.textContent = `${filtered.length} lancamento(s) • ${formatCurrency(total)}`;
+  elements.graphDetailSummary.textContent = `${filtered.length} lancamento(s)  -  ${formatCurrency(total)}`;
 
   elements.graphDetailBody.innerHTML = filtered.length
     ? filtered
@@ -1005,45 +1228,6 @@ function renderSupplierFilter() {
   if (suppliers.includes(currentValue)) {
     elements.filterSupplier.value = currentValue;
   }
-}
-
-function renderSupplierCatalog() {
-  if (!elements.supplierList) {
-    return;
-  }
-
-  if (!state.suppliers.length) {
-    elements.supplierList.innerHTML = `<div class="empty-state">Nenhum fornecedor cadastrado ainda.</div>`;
-    return;
-  }
-
-  elements.supplierList.innerHTML = state.suppliers
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map(
-      (supplier) => `
-          <article class="supplier-card">
-            <div class="supplier-card-top">
-              <strong>${supplier.name}</strong>
-              <span>${formatCurrency(getSpentBySupplier(supplier.name))}</span>
-            </div>
-            <div class="supplier-meta">${renderSupplierMeta(supplier)}</div>
-            <div class="supplier-card-actions">
-              <button type="button" class="table-button" data-edit-supplier="${supplier.id}">Editar</button>
-              <button type="button" class="table-button delete" data-delete-supplier="${supplier.id}">Excluir</button>
-          </div>
-        </article>
-      `
-    )
-    .join("");
-
-  elements.supplierList.querySelectorAll("[data-edit-supplier]").forEach((button) => {
-    button.addEventListener("click", () => startSupplierEdit(button.dataset.editSupplier));
-  });
-
-  elements.supplierList.querySelectorAll("[data-delete-supplier]").forEach((button) => {
-    button.addEventListener("click", () => deleteSupplier(button.dataset.deleteSupplier));
-  });
 }
 
 function renderSuppliersOverview() {
@@ -1099,7 +1283,7 @@ function renderTable() {
   const filtered = getFilteredExpenses();
 
   const filteredTotal = filtered.reduce((sum, expense) => sum + getExpenseTotal(expense), 0);
-  elements.reportSummary.textContent = `${filtered.length} lancamento(s) • ${formatCurrency(filteredTotal)}`;
+  elements.reportSummary.textContent = `${filtered.length} lancamento(s) - ${formatCurrency(filteredTotal)}`;
 
   if (!filtered.length) {
     elements.expensesTableBody.innerHTML = `
@@ -1202,7 +1386,7 @@ function renderSupplierOverviewDetail(filteredExpenses) {
       <div class="report-drill-header">
         <div>
           <strong>${escapeHtml(supplierName)}</strong>
-          <small>${supplierExpenses.length} lancamento(s) • ${formatCurrency(total)}</small>
+          <small>${supplierExpenses.length} lancamento(s)  -  ${formatCurrency(total)}</small>
         </div>
         <button type="button" class="table-button" id="reportSupplierBackButton">Voltar</button>
       </div>
@@ -1360,7 +1544,7 @@ function editSaleTarget() {
 
 function editProjectArea() {
   const nextValue = window.prompt(
-    "Informe a metragem construida (m²):",
+    "Informe a metragem construida (m2):",
     String(state.projectConfig.areaSquareMeters)
   );
   if (nextValue === null) {
@@ -1400,6 +1584,7 @@ async function handleCnpjLookup() {
 
     const data = await response.json();
     applyCnpjLookupResult(data);
+    await loadCitiesForSelectedState();
     window.alert("Dados do CNPJ preenchidos no cadastro. Revise e salve o fornecedor.");
   } catch (error) {
     if (String(error.message || "").includes("http_429")) {
@@ -1418,6 +1603,40 @@ async function handleCnpjLookup() {
   } finally {
     elements.lookupCnpjButton.disabled = false;
     elements.lookupCnpjButton.textContent = originalLabel;
+  }
+}
+
+async function handleZipCodeLookup() {
+  const zipCode = onlyDigits(elements.supplierZipCode.value);
+  if (zipCode.length !== 8) {
+    window.alert("Informe um CEP valido com 8 digitos.");
+    return;
+  }
+
+  const originalLabel = elements.lookupZipCodeButton.textContent;
+  elements.lookupZipCodeButton.disabled = true;
+  elements.lookupZipCodeButton.textContent = "Buscando...";
+
+  try {
+    const response = await fetch(`https://viacep.com.br/ws/${zipCode}/json/`);
+    if (!response.ok) {
+      throw new Error(`http_${response.status}`);
+    }
+
+    const data = await response.json();
+    if (data.erro) {
+      window.alert("CEP nao encontrado.");
+      return;
+    }
+
+    applyZipCodeLookupResult(data);
+    await loadCitiesForSelectedState();
+    window.alert("Endereco preenchido a partir do CEP. Revise e salve o fornecedor.");
+  } catch (error) {
+    window.alert("Nao foi possivel consultar esse CEP agora. Tente novamente em alguns instantes.");
+  } finally {
+    elements.lookupZipCodeButton.disabled = false;
+    elements.lookupZipCodeButton.textContent = originalLabel;
   }
 }
 
@@ -1562,6 +1781,7 @@ function startSupplierEdit(supplierId) {
   }
 
   state.editingSupplierId = supplierId;
+  state.selectedSupplierId = supplierId;
   elements.supplierName.value = supplier.name;
   elements.supplierTradeName.value = supplier.tradeName || "";
   elements.supplierCnpj.value = supplier.cnpj;
@@ -1579,11 +1799,18 @@ function startSupplierEdit(supplierId) {
   elements.supplierNotes.value = supplier.notes || "";
   renderSupplierFormState();
   setView("cadastros");
+  void loadCitiesForSelectedState();
+  elements.supplierForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  window.setTimeout(() => {
+    elements.supplierName.focus();
+    elements.supplierName.select();
+  }, 200);
 }
 
 function resetSupplierForm() {
   state.editingSupplierId = null;
   elements.supplierForm.reset();
+  renderCitySuggestions([]);
   renderSupplierFormState();
 }
 
@@ -1607,10 +1834,14 @@ function deleteSupplier(supplierId) {
   }
 
   state.suppliers = state.suppliers.filter((item) => item.id !== supplierId);
+  if (state.selectedSupplierId === supplierId) {
+    state.selectedSupplierId = null;
+  }
   if (state.editingSupplierId === supplierId) {
     resetSupplierForm();
   }
   persistSuppliers();
+  ensureSelectedSupplierIsVisible();
   render();
 }
 
@@ -1646,6 +1877,7 @@ function ensureSuppliersFromExpenses() {
   });
 
   state.suppliers = merged.sort((a, b) => a.name.localeCompare(b.name));
+  ensureSelectedSupplierIsVisible();
   persistSuppliers();
 }
 
@@ -1681,6 +1913,7 @@ function ensureSupplierExists(name) {
       },
   ].sort((a, b) => a.name.localeCompare(b.name));
 
+  state.selectedSupplierId = state.selectedSupplierId || state.suppliers[0]?.id || null;
   persistSuppliers();
   fillSupplierSelect();
 }
@@ -1879,6 +2112,73 @@ function normalizeSupplierName(value) {
   return value.trim().replace(/\s+/g, " ");
 }
 
+function normalizeStateCode(value) {
+  return String(value || "")
+    .replace(/[^a-z]/gi, "")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function normalizeSearchText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+async function loadCitiesForSelectedState() {
+  const stateCode = normalizeStateCode(elements.supplierState.value);
+  if (stateCode.length !== 2) {
+    renderCitySuggestions([]);
+    return [];
+  }
+
+  elements.supplierState.value = stateCode;
+
+  if (cityOptionsCache.has(stateCode)) {
+    const cachedCities = cityOptionsCache.get(stateCode);
+    renderCitySuggestions(cachedCities);
+    return cachedCities;
+  }
+
+  try {
+    const response = await fetch(`${CITY_API_BASE_URL}/${stateCode}/municipios`);
+    if (!response.ok) {
+      throw new Error(`http_${response.status}`);
+    }
+
+    const cities = (await response.json())
+      .map((city) => city?.nome)
+      .filter(Boolean)
+      .sort((left, right) => left.localeCompare(right, "pt-BR"));
+
+    cityOptionsCache.set(stateCode, cities);
+    renderCitySuggestions(cities);
+    return cities;
+  } catch (error) {
+    console.error(`Falha ao carregar cidades da UF ${stateCode}.`, error);
+    renderCitySuggestions([]);
+    return [];
+  }
+}
+
+function renderCitySuggestions(cities) {
+  elements.supplierCitySuggestions.innerHTML = cities
+    .map((city) => `<option value="${escapeAttribute(city)}"></option>`)
+    .join("");
+}
+
+function isKnownCityForState(stateCode, cityName) {
+  const cities = cityOptionsCache.get(stateCode);
+  if (!cities?.length) {
+    return true;
+  }
+
+  const normalizedCityName = normalizeSearchText(cityName);
+  return cities.some((city) => normalizeSearchText(city) === normalizedCityName);
+}
+
 function formatAddressLine(supplier) {
   const parts = [
     supplier.address,
@@ -1951,6 +2251,17 @@ function applyCnpjLookupResult(data) {
   elements.supplierDistrict.value = establishment.bairro || elements.supplierDistrict.value;
   elements.supplierCity.value = cityName || elements.supplierCity.value;
   elements.supplierState.value = stateCode || elements.supplierState.value;
+}
+
+function applyZipCodeLookupResult(data) {
+  const nextZipCode = formatZipCode(data.cep || elements.supplierZipCode.value);
+  const nextStreet = [data.logradouro, data.complemento].filter(Boolean).join(" ").trim();
+
+  elements.supplierZipCode.value = nextZipCode || elements.supplierZipCode.value;
+  elements.supplierAddress.value = nextStreet || elements.supplierAddress.value;
+  elements.supplierDistrict.value = data.bairro || elements.supplierDistrict.value;
+  elements.supplierCity.value = data.localidade || elements.supplierCity.value;
+  elements.supplierState.value = normalizeStateCode(data.uf || elements.supplierState.value);
 }
 
 function cnpjFromLookup(root, establishment) {
@@ -2134,3 +2445,4 @@ function getSpentBySupplier(supplierName) {
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
+
