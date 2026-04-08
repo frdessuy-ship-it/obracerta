@@ -205,6 +205,8 @@ const state = {
   expenses: loadExpenses().map(normalizeExpense),
   editingExpenseId: null,
   editingSupplierId: null,
+  expenseDraftTouched: false,
+  supplierDraftTouched: false,
   selectedSupplierId: null,
   supplierSearchTerm: "",
   currentView: "dashboard",
@@ -373,6 +375,12 @@ function bindEvents() {
   elements.clearSupplierSearchButton.addEventListener("click", clearSupplierSearch);
   elements.expenseForm.addEventListener("submit", handleExpenseSubmit);
   elements.cancelEditButton.addEventListener("click", resetForm);
+  elements.expenseForm.addEventListener("input", markExpenseDraftTouched);
+  elements.expenseForm.addEventListener("change", markExpenseDraftTouched);
+  elements.expenseForm.addEventListener("focusin", markExpenseDraftTouched);
+  elements.supplierForm.addEventListener("input", markSupplierDraftTouched);
+  elements.supplierForm.addEventListener("change", markSupplierDraftTouched);
+  elements.supplierForm.addEventListener("focusin", markSupplierDraftTouched);
   elements.filterDateFrom.addEventListener("change", handleReportFilterChange);
   elements.filterDateTo.addEventListener("change", handleReportFilterChange);
   elements.filterCategory.addEventListener("change", handleReportFilterChange);
@@ -579,6 +587,10 @@ function hasUnsavedExpenseDraft() {
     return false;
   }
 
+  if (state.expenseDraftTouched) {
+    return true;
+  }
+
   if (state.editingExpenseId) {
     return true;
   }
@@ -614,6 +626,10 @@ function hasUnsavedExpenseDraft() {
 function hasUnsavedSupplierDraft() {
   if (!elements.supplierForm) {
     return false;
+  }
+
+  if (state.supplierDraftTouched) {
+    return true;
   }
 
   if (state.editingSupplierId) {
@@ -902,6 +918,14 @@ function clearSupplierSearch() {
   elements.supplierSearchInput.value = "";
   ensureSelectedSupplierIsVisible();
   renderSupplierDirectory();
+}
+
+function markExpenseDraftTouched() {
+  state.expenseDraftTouched = true;
+}
+
+function markSupplierDraftTouched() {
+  state.supplierDraftTouched = true;
 }
 
 function handleSupplierStateInput() {
@@ -1625,6 +1649,7 @@ function deleteExpense(expenseId) {
 
 function resetForm() {
   state.editingExpenseId = null;
+  state.expenseDraftTouched = false;
   elements.expenseForm.reset();
   elements.expenseDate.value = today();
   setExpenseItems([createEmptyExpenseItem()]);
@@ -1967,6 +1992,7 @@ function startSupplierEdit(supplierId) {
 
 function resetSupplierForm() {
   state.editingSupplierId = null;
+  state.supplierDraftTouched = false;
   elements.supplierForm.reset();
   renderCitySuggestions([]);
   renderSupplierFormState();
