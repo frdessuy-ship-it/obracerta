@@ -2548,9 +2548,9 @@ function renderExpenseItemRow(item, index) {
         </select>
       </td>
       <td><input type="text" data-item-field="description" value="${escapeAttribute(item.description || "")}" placeholder="Descricao do item" required></td>
-      <td><input type="number" data-item-field="quantity" min="0" step="0.01" value="${Number(item.quantity || 1)}" required></td>
-      <td><input type="number" data-item-field="unitValue" min="0" step="0.01" value="${Number(item.unitValue || 0)}" required></td>
-      <td><input type="number" data-item-field="discountValue" min="0" step="0.01" value="${Number(item.discountValue || 0)}"></td>
+      <td><input type="number" data-item-field="quantity" min="0" step="1" value="${Number(item.quantity || 1)}" required></td>
+      <td><input type="number" data-item-field="unitValue" min="0" step="1" value="${Number(item.unitValue || 0)}" required></td>
+      <td><input type="number" data-item-field="discountValue" min="0" step="1" value="${Number(item.discountValue || 0)}"></td>
       <td><input type="text" data-item-field="paidValue" value="${formatCurrency(paidValue)}" readonly></td>
       <td><button type="button" class="table-button delete" data-remove-item="${index}">Remover</button></td>
     </tr>
