@@ -1,4 +1,4 @@
-const APP_CACHE = "obra-certa-shell-v1";
+const APP_CACHE = "obra-certa-shell-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -43,26 +43,24 @@ self.addEventListener("fetch", (event) => {
 
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(() => caches.match("./index.html"))
+      fetchAndCache(request).catch(() => caches.match("./index.html"))
     );
     return;
   }
 
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-
-      return fetch(request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200) {
-          return networkResponse;
-        }
-
-        const clonedResponse = networkResponse.clone();
-        caches.open(APP_CACHE).then((cache) => cache.put(request, clonedResponse));
-        return networkResponse;
-      });
-    })
+    fetchAndCache(request).catch(() => caches.match(request))
   );
 });
+
+async function fetchAndCache(request) {
+  const networkResponse = await fetch(request);
+  if (!networkResponse || networkResponse.status !== 200) {
+    return networkResponse;
+  }
+
+  const clonedResponse = networkResponse.clone();
+  const cache = await caches.open(APP_CACHE);
+  await cache.put(request, clonedResponse);
+  return networkResponse;
+}

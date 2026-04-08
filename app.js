@@ -504,6 +504,10 @@ async function refreshCloudState() {
     return;
   }
 
+  if (hasUnsavedDrafts()) {
+    return;
+  }
+
   applyCloudSnapshot(data.payload);
   persistAllLocal();
   render();
@@ -564,6 +568,75 @@ function applyCloudSnapshot(payload) {
 
 function createCloudSignature(payload) {
   return JSON.stringify(payload);
+}
+
+function hasUnsavedDrafts() {
+  return hasUnsavedExpenseDraft() || hasUnsavedSupplierDraft();
+}
+
+function hasUnsavedExpenseDraft() {
+  if (!elements.expenseForm) {
+    return false;
+  }
+
+  if (state.editingExpenseId) {
+    return true;
+  }
+
+  const hasBaseFields =
+    Boolean(elements.expenseInvoice.value.trim()) ||
+    Boolean(elements.expenseSupplier.value.trim()) ||
+    Boolean(elements.expenseNotes.value.trim()) ||
+    (elements.expenseDate.value && elements.expenseDate.value !== today());
+
+  if (hasBaseFields) {
+    return true;
+  }
+
+  const items = [...elements.expenseItemsBody.querySelectorAll("tr")];
+  return items.some((row) => {
+    const category = row.querySelector('[data-item-field="category"]')?.value || categories[0];
+    const description = row.querySelector('[data-item-field="description"]')?.value.trim() || "";
+    const quantity = Number(row.querySelector('[data-item-field="quantity"]')?.value || 0);
+    const unitValue = Number(row.querySelector('[data-item-field="unitValue"]')?.value || 0);
+    const discountValue = Number(row.querySelector('[data-item-field="discountValue"]')?.value || 0);
+
+    return (
+      category !== categories[0] ||
+      Boolean(description) ||
+      quantity !== 1 ||
+      unitValue !== 0 ||
+      discountValue !== 0
+    );
+  });
+}
+
+function hasUnsavedSupplierDraft() {
+  if (!elements.supplierForm) {
+    return false;
+  }
+
+  if (state.editingSupplierId) {
+    return true;
+  }
+
+  return [
+    elements.supplierName,
+    elements.supplierTradeName,
+    elements.supplierCnpj,
+    elements.supplierStateRegistration,
+    elements.supplierEmail,
+    elements.supplierPhone,
+    elements.supplierMobile,
+    elements.supplierZipCode,
+    elements.supplierAddress,
+    elements.supplierNumber,
+    elements.supplierComplement,
+    elements.supplierDistrict,
+    elements.supplierCity,
+    elements.supplierState,
+    elements.supplierNotes,
+  ].some((field) => Boolean(field.value.trim()));
 }
 
 async function ensureCloudAccessKey() {
@@ -1556,6 +1629,7 @@ function resetForm() {
   elements.expenseDate.value = today();
   setExpenseItems([createEmptyExpenseItem()]);
   renderFormState();
+  void refreshCloudState();
 }
 
 function fillBrandForm() {
@@ -1896,6 +1970,7 @@ function resetSupplierForm() {
   elements.supplierForm.reset();
   renderCitySuggestions([]);
   renderSupplierFormState();
+  void refreshCloudState();
 }
 
 function deleteSupplier(supplierId) {
